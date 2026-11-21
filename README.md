@@ -2,7 +2,7 @@
 
 Un lien de post partagé, un fichier dans le dossier « Memes » du NAS.
 
-Le moteur est **gallery-dl**. Ce dépôt contient le service d'entrée, l'abonné ntfy et les manifestes k3s. Il a été extrait de `rouedad-infra` (branche `feat/memes-k3s`, `kubernetes/k3s/apps/memes/`) pour devenir un projet autonome sous `Elektro121`.
+Le moteur est **gallery-dl**. Ce dépôt contient le service d'entrée, l'abonné ntfy et les manifestes k3s. Il a été extrait de `rouedad-infra` (branche `feat/memes-k3s`, `kubernetes/k3s/apps/memes/`) pour devenir un projet autonome sous `atostivint`.
 
 ## État au 21 novembre 2026
 
