@@ -16,6 +16,16 @@ Le moteur est **gallery-dl**. Ce dépôt contient le service d'entrée, l'abonn�
 - `memedl-ntfy.py` — abonné au flux ntfy : reprise au dernier identifiant de message traité, extraction de la première URL, envoi vers `/hook`.
 - `Dockerfile`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `kustomization.yaml` — déploiement k3s, volume NAS, Ingress Traefik sur un hôte interne.
 
+## Formats attendus
+
+Trois cas à couvrir pour les posts X/Twitter :
+
+- **Photos** — fichiers originaux, y compris les carrousels. Déjà couvert par `gallery-dl`.
+- **GIFs** — X les stocke comme de courtes vidéos MP4 en boucle, sans piste audio. Pour obtenir un vrai fichier `.gif`, il faut convertir le MP4 avec `ffmpeg` (présent sur l'hôte). À valider sur un post réel.
+- **Vidéos avec son** — sélectionner un format qui garde l'audio, pas seulement la vidéo. `yt-dlp` permet de demander « meilleure vidéo + meilleur audio » avec repli sur le meilleur format progressif. À valider sur un post réel.
+
+Les deux derniers points ne sont pas encore implémentés : la sonde sur un vrai post manque.
+
 ## Configuration
 
 Variables lues par `memedl.py` :
