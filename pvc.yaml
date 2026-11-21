@@ -1,0 +1,52 @@
+# memes — volume sur le NAS Synology (partage « Memes »)
+#
+# Même montage CSI SMB que media-storage (driver smb.csi.k8s.io déjà installé,
+# secret `smb-synology-creds` déjà présent dans la namespace media — c'est pour
+# ça que cette app vit dans `media` et pas dans sa propre namespace).
+#
+# Prérequis côté DSM : un PARTAGE (dossier partagé) nommé `Memes` sur volume1,
+# SMB activé, et le compte utilisé par `smb-synology-creds` autorisé en
+# lecture/écriture dessus. Un simple sous-dossier ne suffit pas : le PV pointe
+# sur //hôte/Partage.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-synology-memes
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb-synology
+  mountOptions:
+    - vers=3.0
+    - uid=1000
+    - gid=1000
+    - file_mode=0777
+    - dir_mode=0777
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: synology-memes
+    volumeAttributes:
+      source: "//<NAS_IP>/Memes"
+    nodeStageSecretRef:
+      name: smb-synology-creds
+      namespace: media
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: memes-library
+  namespace: media
+  labels:
+    app.kubernetes.io/name: memes
+    app.kubernetes.io/part-of: memes
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: smb-synology
+  volumeName: pv-synology-memes
+  resources:
+    requests:
+      storage: 1Ti
