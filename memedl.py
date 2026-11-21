@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""memedl — receive an Instagram (or any gallery-dl supported) URL and fetch its media.
+"""memedl — receive a post URL (X/Twitter, Instagram, ...) and fetch its media.
 
 Stdlib only. Intake:  POST /hook  (plain text body, JSON {"url": ...}, or form url=...)
 Gallery:  GET  /            -> HTML grid of downloaded files
@@ -43,6 +43,10 @@ WEBP_TO = os.environ.get("MEMEDL_WEBP_TO", "png").strip().lower()
 XBB_URL = (os.environ.get("MEMEDL_XBB_URL") or "").rstrip("/")
 XBB_TOKEN_FILE = os.environ.get("MEMEDL_XBB_TOKEN_FILE", "")
 GDL = shutil.which("gallery-dl") or "/opt/memedl-venv/bin/gallery-dl"
+YTDLP = shutil.which("yt-dlp") or "/opt/memedl-venv/bin/yt-dlp"
+FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
+FFPROBE = shutil.which("ffprobe") or "ffprobe"
+X_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
 LOG = DIR.parent / "memedl.log"
 SEEN = DIR.parent / "memedl-seen.txt"
 LINKS = DIR.parent / "memedl-links.jsonl"
@@ -174,6 +178,81 @@ def convert_webp(path: Path) -> Path:
     return out
 
 
+def is_x(url: str) -> bool:
+    return (urlparse(url).hostname or "").lower() in X_HOSTS
+
+
+def has_audio(path: Path) -> bool:
+    """Vrai si le fichier a un flux audio. En cas de doute, on ne convertit pas."""
+    try:
+        res = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"FFPROBE FAIL {path.name} {exc}")
+        return True
+    return bool(res.stdout.strip())
+
+
+def convert_to_gif(path: Path) -> Path:
+    """MP4 muet de X -> vrai .gif. Si ffmpeg échoue, le MP4 est conservé."""
+    out = path.with_suffix(".gif")
+    vf = "fps=15,scale='min(480,iw)':-1:flags=lanczos"
+    cmd = [FFMPEG, "-y", "-loglevel", "error", "-i", str(path), "-vf", vf, str(out)]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"GIF CONVERT FAIL {path.name} {exc}")
+        return path
+    if res.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+        log(f"GIF CONVERT FAIL {path.name} {res.stderr.strip()[-200:]}")
+        out.unlink(missing_ok=True)
+        return path
+    path.unlink(missing_ok=True)
+    log(f"GIF CONVERT {out.name}")
+    return out
+
+
+def gallery_fetch(url: str, tmp: Path):
+    """Chemin historique : gallery-dl, pour les images et les autres sites."""
+    cmd = [GDL, "--no-mtime", "--directory", str(tmp), url]
+    if COOKIES and ("instagram.com" in url or is_x(url)) and Path(COOKIES).exists():
+        cmd[1:1] = ["--cookies", COOKIES]
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    got = sorted([p for p in tmp.rglob("*") if p.is_file()])
+    return res, got
+
+
+def fetch_x(url: str, tmp: Path):
+    """X : yt-dlp garde le son des vidéos, convertit les MP4 muets en .gif.
+
+    Repli sur gallery-dl si yt-dlp ne trouve rien (post image seule).
+    Vérifié le 2026-11-21 sur trois posts réels : vidéo H.264+AAC, GIF MP4, image JPG.
+    """
+    if Path(YTDLP).exists() or shutil.which("yt-dlp"):
+        cmd = [YTDLP, "-f", "bv*+ba/b", "--no-warnings", "--no-mtime",
+               "--no-playlist", "-o", str(tmp / "x.%(ext)s"), url]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            log(f"YTDLP FAIL {url} {exc}")
+            res = None
+        if res is not None and res.returncode == 0:
+            got = sorted([p for p in tmp.rglob("*") if p.is_file()])
+            if got:
+                for p in list(got):
+                    if p.suffix.lower() == ".mp4" and not has_audio(p):
+                        converted = convert_to_gif(p)
+                        if converted != p:
+                            got[got.index(p)] = converted
+                return None, got
+            log(f"YTDLP empty {url}")
+        elif res is not None:
+            log(f"YTDLP FAIL {url} {res.stderr.strip()[-300:]}")
+    return gallery_fetch(url, tmp)
+
+
 def worker() -> None:
     while True:
         with QLOCK:
@@ -187,17 +266,17 @@ def worker() -> None:
         prefix = f"{stamp}-{tag}"
         tmp = DIR / ".tmp" / stamp
         tmp.mkdir(parents=True, exist_ok=True)
-        cmd = [GDL, "--no-mtime", "--directory", str(tmp), url]
-        if COOKIES and "instagram.com" in url and Path(COOKIES).exists():
-            cmd[1:1] = ["--cookies", COOKIES]
         log(f"fetch {url}")
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-            got = sorted([p for p in tmp.rglob("*") if p.is_file()])
-            if res.returncode != 0 or not got:
+            if is_x(url):
+                res, got = fetch_x(url, tmp)
+            else:
+                res, got = gallery_fetch(url, tmp)
+            failed = (res is not None and res.returncode != 0) or not got
+            if failed:
                 STATS["fail"] += 1
-                reason = res.stderr.strip()[-400:] or "no media returned"
-                log(f"FAIL rc={res.returncode} {reason}")
+                reason = (res.stderr.strip()[-400:] if res is not None else "") or "no media returned"
+                log(f"FAIL {reason}")
             else:
                 for i, src in enumerate(got, 1):
                     if src.suffix.lower() == ".webp":
