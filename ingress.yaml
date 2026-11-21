@@ -1,0 +1,23 @@
+# La galerie et le hook portent leur propre jeton (?token= ou X-Token) : l'ingress
+# n'ajoute pas d'auth, il ne fait que router. Ne pas publier ce host hors du LAN
+# sans TLS + jeton — l'URL token est la seule protection.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: memes
+  namespace: media
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: memes.homelab.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: memes
+                port:
+                  name: http
