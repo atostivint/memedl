@@ -8,7 +8,7 @@ Le moteur est **gallery-dl**. Ce dépôt contient le service d'entrée, l'abonn�
 
 - Code préparé localement, **pas encore poussé** sur GitHub.
 - Pas déployé : la branche d'origine n'est pas mergée sur `master`.
-- **Support X/Twitter à prouver.** Depuis l'hôte sandbox (IP de datacenter), `gallery-dl -g` sur un post x.com répond `[twitter][info] Requesting guest token` puis `[twitter][error] 'Unavailable'`. Ce résultat est non concluant : la même limite peut venir de l'IP de sortie. La sonde qui fait autorité doit tourner depuis le WAN du foyer ou depuis le pod déployé.
+- **Support X/Twitter validé le 21 novembre 2026** sur trois posts publics réels. `gallery-dl` récupère les images. Un échec ponctuel sur un autre post venait du guest token, pas d'une interdiction liée à l'IP. Pour les vidéos et les GIFs, le service utilise `yt-dlp`.
 
 ## Composants
 
@@ -16,15 +16,15 @@ Le moteur est **gallery-dl**. Ce dépôt contient le service d'entrée, l'abonn�
 - `memedl-ntfy.py` — abonné au flux ntfy : reprise au dernier identifiant de message traité, extraction de la première URL, envoi vers `/hook`.
 - `Dockerfile`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `pvc.yaml`, `kustomization.yaml` — déploiement k3s, volume NAS, Ingress Traefik sur un hôte interne.
 
-## Formats attendus
+## Formats pris en charge
 
-Trois cas à couvrir pour les posts X/Twitter :
+Trois cas validés le 21 novembre 2026 sur des posts publics réels :
 
-- **Photos** — fichiers originaux, y compris les carrousels. Déjà couvert par `gallery-dl`.
-- **GIFs** — X les stocke comme de courtes vidéos MP4 en boucle, sans piste audio. Pour obtenir un vrai fichier `.gif`, il faut convertir le MP4 avec `ffmpeg` (présent sur l'hôte). À valider sur un post réel.
-- **Vidéos avec son** — sélectionner un format qui garde l'audio, pas seulement la vidéo. `yt-dlp` permet de demander « meilleure vidéo + meilleur audio » avec repli sur le meilleur format progressif. À valider sur un post réel.
+- **Photos** — `gallery-dl` récupère l'original. Vérifié : JPEG 1254 × 1674.
+- **Vidéos avec son** — `yt-dlp -f "bv*+ba/b"` demande la meilleure vidéo et le meilleur audio, puis fusionne. Vérifié : H.264 394 × 360 + AAC.
+- **GIFs** — X sert un MP4 muet. Le service détecte l'absence de piste audio avec `ffprobe`, puis convertit en vrai `.gif` avec `ffmpeg` (15 images/s, 480 px de large maximum). Vérifié : GIF89a 252 × 450. Si `ffmpeg` échoue, le MP4 d'origine est conservé.
 
-Les deux derniers points ne sont pas encore implémentés : la sonde sur un vrai post manque.
+`yt-dlp` est aussi utilisé en premier sur les URLs X. S'il ne trouve rien, le service retombe sur `gallery-dl` pour les posts image seule.
 
 ## Configuration
 
@@ -36,7 +36,7 @@ Variables lues par `memedl.py` :
 - `MEMEDL_TOKEN` — généré et affiché au démarrage s'il est absent
 - `MEMEDL_COOKIES` — fichier `cookies.txt` au format Netscape
 
-Le service ne transmet `MEMEDL_COOKIES` que pour les URL `instagram.com`. L'extension à `x.com` / `twitter.com` n'est pas faite tant que la sonde n'a pas montré qu'elle était nécessaire : ne pas ajouter de code sur une hypothèse.
+Le service transmet `MEMEDL_COOKIES` aux URLs `instagram.com` et `x.com` / `twitter.com` quand le fichier existe. Aucun cookie n'était nécessaire pour les trois posts publics testés.
 
 ## Sécurité
 

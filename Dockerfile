@@ -5,13 +5,14 @@
 FROM python:3.12-slim
 
 ARG GALLERY_DL_VERSION=1.32.19
+ARG YTDLP_VERSION=2026.10.26
 
-# ffmpeg : nécessaire uniquement pour certains reels (vidéo+audio séparés).
+# ffmpeg : vidéo+audio séparés, conversion des MP4 muets de X en vrai .gif.
 # curl : sonde de santé du conteneur.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir "gallery-dl==${GALLERY_DL_VERSION}" \
+ && pip install --no-cache-dir "gallery-dl==${GALLERY_DL_VERSION}" "yt-dlp==${YTDLP_VERSION}" \
  && useradd --uid 1000 --create-home --shell /usr/sbin/nologin memedl
 
 WORKDIR /app
