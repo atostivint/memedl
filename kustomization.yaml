@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# memes — un lien (ntfy ou POST) devient un fichier dans le partage NAS « Memes ».
+# Le Secret `memedl-secrets` et le Secret optionnel `memedl-cookies` ne sont PAS
+# gérés ici : voir apps/memes/deployment.yaml et docs/memes.md.
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
