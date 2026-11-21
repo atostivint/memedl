@@ -106,11 +106,11 @@ spec:
           imagePullPolicy: Always
           command: ["python3", "/app/memedl-ntfy.py"]
           env:
-            # topic ntfy : même instance que les alertes *arr (ntfy.example.com)
+            # topic ntfy : même instance que les alertes *arr (ntfy.korobase.info)
             - name: NT_MEMEDL_TOPIC
               value: memes
             - name: NT_MEMEDL_BASE
-              value: https://ntfy.example.com
+              value: https://ntfy.korobase.info
             - name: NT_MEMEDL_HOOK
               value: http://127.0.0.1:8765/hook
             - name: NT_MEMEDL_TOKEN_FILE

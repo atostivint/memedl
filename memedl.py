@@ -12,7 +12,7 @@ Config via env:
   MEMEDL_TOKEN    shared secret; require ?token= or X-Token header (default: generated at startup and printed)
   MEMEDL_COOKIES  cookies.txt for instagram     (optional)
   MEMEDL_BIND     bind address                  (default 127.0.0.1)
-  MEMEDL_XBB_URL  XBackBone base URL, e.g. https://example.com/xbackbone  (optional: mirror uploads)
+  MEMEDL_XBB_URL  XBackBone base URL, e.g. https://korobase.info/xbackbone  (optional: mirror uploads)
   MEMEDL_XBB_TOKEN_FILE  file holding the XBackBone API token               (required for mirroring)
 """
 import json

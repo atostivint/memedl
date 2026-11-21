@@ -5,7 +5,7 @@ Waits on one ntfy topic (JSON stream), pulls the first http(s) URL out of each
 message, and POSTs it to the memedl hook. Stdlib only, single process.
 
 Env:
-  NT_MEMEDL_BASE            ntfy base URL           (default https://ntfy.example.com)
+  NT_MEMEDL_BASE            ntfy base URL           (default https://ntfy.korobase.info)
   NT_MEMEDL_TOPIC           topic to watch          (required)
   NT_MEMEDL_TOKEN_FILE      file with ntfy token    (optional, sent as Authorization: Bearer)
   NT_MEMEDL_HOOK            memedl hook URL         (default http://127.0.0.1:8765/hook)
@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-BASE = (os.environ.get("NT_MEMEDL_BASE") or "https://ntfy.example.com").rstrip("/")
+BASE = (os.environ.get("NT_MEMEDL_BASE") or "https://ntfy.korobase.info").rstrip("/")
 TOPIC = (os.environ.get("NT_MEMEDL_TOPIC") or "").strip()
 TOKEN_FILE = os.environ.get("NT_MEMEDL_TOKEN_FILE", "")
 HOOK = os.environ.get("NT_MEMEDL_HOOK") or "http://127.0.0.1:8765/hook"
