@@ -1,0 +1,156 @@
+# memes — intake d'un lien (ntfy ou HTTP) -> fichier dans le partage NAS
+#
+# Deux conteneurs, une image :
+#   - memedl      : hook POST /hook + galerie token-protégée + worker gallery-dl
+#   - memedl-ntfy : abonne un topic ntfy et pousse chaque lien vers le hook local
+#
+# Secrets (créés à la main, jamais dans git) — namespace media :
+#   kubectl -n media create secret generic memedl-secrets \
+#     --from-literal=token="$(openssl rand -base64 24)" \
+#     --from-file=ntfy.token=/chemin/ntfy.token
+#   kubectl -n media create secret generic memedl-cookies \
+#     --from-file=cookies.txt=/chemin/cookies.txt
+#
+# `memedl-cookies` est optionnel : sans lui, Instagram répond « redirect to
+# login page » (voir docs/memes.md). Le pod démarre quand même.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memes
+  namespace: media
+  labels:
+    app.kubernetes.io/name: memes
+    app.kubernetes.io/part-of: memes
+spec:
+  replicas: 1
+  # un seul worker : les téléchargements sont séquentiels pour rester sous les
+  # limites de rate de la plateforme, et le montage SMB n'aime pas deux écrivains
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: memes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: memes
+        app.kubernetes.io/part-of: memes
+    spec:
+      # image privée sur GHCR : même secret de pull que busybar / bc250-gateway
+      # (à créer une fois dans cette namespace :
+      #  kubectl -n media create secret docker-registry ghcr-pull \
+      #    --docker-server=ghcr.io --docker-username=<compte> --docker-password=<PAT read:packages>)
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: memedl
+          image: ghcr.io/atostivint/memedl:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8765
+          env:
+            - name: MEMEDL_DIR
+              value: /data/library
+            - name: MEMEDL_BIND
+              value: 0.0.0.0
+            - name: MEMEDL_PORT
+              value: "8765"
+            # optional: sans Secret, memedl génère un jeton au démarrage et
+            # l'écrit dans ses logs — l'app démarre au lieu de rester bloquée
+            # en ContainerCreating tant que le Secret n'est pas créé.
+            - name: MEMEDL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: memedl-secrets
+                  key: token
+                  optional: true
+            - name: MEMEDL_COOKIES
+              value: /cookies/cookies.txt
+            # Instagram sert souvent du WebP : converti en JPEG à l'arrivée
+            # (PNG = 8x plus lourd ; "" pour désactiver et garder le WebP)
+            - name: MEMEDL_WEBP_TO
+              value: jpg
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: cookies
+              mountPath: /cookies
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        - name: memedl-ntfy
+          image: ghcr.io/atostivint/memedl:latest
+          imagePullPolicy: Always
+          command: ["python3", "/app/memedl-ntfy.py"]
+          env:
+            # topic ntfy : même instance que les alertes *arr (ntfy.example.com)
+            - name: NT_MEMEDL_TOPIC
+              value: memes
+            - name: NT_MEMEDL_BASE
+              value: https://ntfy.example.com
+            - name: NT_MEMEDL_HOOK
+              value: http://127.0.0.1:8765/hook
+            - name: NT_MEMEDL_TOKEN_FILE
+              value: /secrets/ntfy.token
+            - name: NT_MEMEDL_HOOK_TOKEN_FILE
+              value: /secrets/memedl.token
+            - name: NT_MEMEDL_SINCE_FILE
+              value: /data/.state/since
+            # au premier démarrage, on ne remonte pas l'historique du topic :
+            # seuls les liens publiés à partir de maintenant sont traités
+            - name: NT_MEMEDL_FIRST_LOOKBACK
+              value: 1m
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: memes-library
+        - name: secrets
+          secret:
+            secretName: memedl-secrets
+            optional: true
+            defaultMode: 0440
+            items:
+              - key: token
+                path: memedl.token
+              - key: ntfy.token
+                path: ntfy.token
+        - name: cookies
+          secret:
+            secretName: memedl-cookies
+            optional: true
+            defaultMode: 0440
